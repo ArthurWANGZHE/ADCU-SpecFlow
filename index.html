@@ -1,0 +1,529 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ADCU-SpecFlow</title>
+    <!-- Tailwind CSS for high-end corporate styling -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        slate: {
+                            50: '#f8fafc',
+                            100: '#f1f5f9',
+                            200: '#e2e8f0',
+                            300: '#cbd5e1',
+                            400: '#94a3b8',
+                            500: '#64748b',
+                            600: '#475569',
+                            700: '#334155',
+                            800: '#1e293b',
+                            900: '#0f172a'
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <!-- Client-side Document Parsers CDN (Bypasses Firewall, loaded by browser) -->
+    <!-- 1. PDF.js for PDF extraction -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.min.js"></script>
+    <!-- 2. Mammoth.js for Word (.docx) extraction -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js"></script>
+    <!-- 3. SheetJS for Excel (.xlsx/.xls) extraction -->
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+</head>
+<body class="bg-slate-50 text-slate-900 h-full flex flex-col font-sans">
+
+    <!-- Header -->
+    <header class="bg-slate-800 border-b-2 border-blue-600 py-5 px-8">
+        <div class="max-w-7xl mx-auto">
+            <h1 class="text-xl font-bold text-white">ADCU-SpecFlow</h1>
+        </div>
+    </header>
+
+    <!-- Main Workspace -->
+    <main class="flex-1 max-w-7xl w-full mx-auto p-6 md:p-8 flex flex-col lg:flex-row gap-6 overflow-y-auto">
+        
+        <!-- Left Panel: Input & File Drag Area -->
+        <section class="lg:w-4/12 flex flex-col">
+            <div class="bg-white border border-slate-200 rounded-lg p-5 flex flex-col gap-4 shadow-sm h-full">
+                <h3 class="text-sm font-bold text-slate-800 uppercase tracking-wider">配置与输入</h3>
+                
+                <!-- Optional API Key -->
+                <div>
+                    <label class="block text-xs font-semibold text-slate-500 mb-1">DeepSeek API Key (可选)</label>
+                    <input type="password" id="api_key_input" placeholder="sk-..." class="w-full text-xs px-3 py-2 bg-slate-50 border border-slate-200 rounded focus:outline-none focus:border-blue-500 transition" />
+                </div>
+                
+                <!-- Drag and Drop Upload Area -->
+                <div>
+                    <label class="block text-xs font-semibold text-slate-500 mb-2">上传规格文件 (支持 PDF, Word, Excel, CSV, TXT)</label>
+                    <div id="drop_zone" class="border-2 border-dashed border-slate-200 hover:border-blue-400 rounded-lg p-6 text-center cursor-pointer bg-slate-50 hover:bg-slate-100/50 transition">
+                        <input type="file" id="file_picker" accept=".pdf,.docx,.xlsx,.xls,.csv,.txt" class="hidden" />
+                        <svg class="mx-auto h-8 w-8 text-slate-400 mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/>
+                        </svg>
+                        <p class="text-xs font-semibold text-slate-600">点击上传 或 拖拽文件到这里</p>
+                        <p class="text-[10px] text-slate-400 mt-1" id="file_status">支持最大 20MB 文件</p>
+                    </div>
+                </div>
+                
+                <!-- Extracted plain text area -->
+                <div class="flex-1 flex flex-col">
+                    <label for="input_text" class="block text-xs font-semibold text-slate-500 mb-2">解析文本内容</label>
+                    <textarea id="input_text" class="flex-1 w-full h-[280px] bg-slate-50 text-slate-800 border border-slate-200 rounded-lg p-3 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 transition" placeholder="上传文件或点击下方加载样例后，解析出的文本将在此呈现，您也可以直接编辑..."></textarea>
+                </div>
+
+                <div class="grid grid-cols-2 gap-3">
+                    <button id="btn_load" class="py-2 px-4 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold rounded-lg text-xs transition cursor-pointer text-center border border-slate-200">
+                        加载样例
+                    </button>
+                    <button id="btn_analyze" class="py-2 px-4 bg-blue-600 hover:bg-blue-500 text-white font-semibold rounded-lg text-xs transition cursor-pointer text-center">
+                        拆解并生成 Excel
+                    </button>
+                </div>
+            </div>
+        </section>
+
+        <!-- Right Panel: Data Output & Interactive Preview -->
+        <section class="lg:w-8/12 flex flex-col">
+            <div class="bg-white border border-slate-200 rounded-lg p-5 flex flex-col gap-5 shadow-sm h-full">
+                <h3 class="text-sm font-bold text-slate-800 uppercase tracking-wider">结构化数据输出</h3>
+                
+                <!-- Downloader block -->
+                <div class="flex items-center justify-between bg-slate-50 border border-slate-200 rounded-lg p-3">
+                    <div class="text-xs text-slate-600">系统状态: <span id="status_text" class="font-bold text-slate-800">就绪</span></div>
+                    <button id="btn_download" class="hidden py-1.5 px-4 bg-emerald-600 hover:bg-emerald-500 text-white font-semibold rounded text-xs transition cursor-pointer">
+                        📥 下载结构化 Excel (CSV格式)
+                    </button>
+                </div>
+                
+                <!-- Table View -->
+                <div class="flex-1 flex flex-col min-h-[350px]">
+                    <div class="border-b border-slate-200 pb-2 mb-3">
+                        <span class="text-xs font-bold text-blue-600 border-b-2 border-blue-600 pb-2">数据矩阵预览</span>
+                    </div>
+                    
+                    <div class="flex-1 overflow-auto border border-slate-200 rounded-lg">
+                        <table class="w-full text-left border-collapse text-xs">
+                            <thead>
+                                <tr class="bg-slate-100 text-slate-700 font-bold border-b border-slate-200">
+                                    <th class="p-3 w-16 text-center">序号</th>
+                                    <th class="p-3">内容</th>
+                                    <th class="p-3 w-28 text-center">Type</th>
+                                </tr>
+                            </thead>
+                            <tbody id="matrix_tbody" class="text-slate-600 divide-y divide-slate-100">
+                                <tr>
+                                    <td colspan="3" class="p-8 text-center text-slate-400">请加载数据并执行“拆解并生成 Excel”</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <!-- JavaScript Parser Logic -->
+    <script>
+        // PDF.js Worker setup
+        pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.worker.min.js';
+
+        const PRESET_TEXT = `[ADCU System Requirement Specification - Version 1.2]
+
+1. ReqID: REQ-ADCU-010
+   Title: Automatic Emergency Braking (AEB) Target Vehicle Deceleration Control
+   Description: The ADCU shall request a deceleration of up to -6.0 m/s^2 from the ESC when a high probability of collision with a target vehicle in front is detected.
+   ASIL: ASIL D
+   Associated Signals: SG_AEB_DecelRequest, SG_AEB_Status, SG_ESC_DecelResponse
+   SWC Mapping: SWC_AEB_Control
+
+2. ReqID: REQ-ADCU-022
+   Title: Blind Spot Detection (BSD) Warning Indicator
+   Description: The ADCU shall activate the corresponding BSD LED indicator on the side mirror when a target vehicle is detected in the blind spot zone.
+   ASIL: ASIL A
+   Associated Signals: SG_BSD_LeftLED_Cmd, SG_BSD_RightLED_Cmd, SG_Radar_Target_List
+   SWC Mapping: SWC_BSD_Warning
+
+3. ReqID: REQ-ADCU-035
+   Title: Vehicle Speed Estimation and Processing
+   Description: The ADCU shall estimate the ego vehicle speed based on wheel speed signals from the CAN bus and make it available for sensor fusion SWC.
+   ASIL: ASIL B
+   Associated Signals: SG_Wheel_Speed_FR, SG_Wheel_Speed_FL, SG_Wheel_Speed_RR, SG_Wheel_Speed_RL
+   SWC Mapping: (None)  # ⚠️ 漏洞 1: 下游映射组件缺失 (违反 ASPICE SWE.1)
+
+4. ReqID: REQ-ADCU-041
+   Title: Lateral Motion Control Trajectory Planning
+   Description: The ADCU shall calculate the target steering angle for lane keeping assist and forward the trajectory command to the EPS (Electric Power Steering).
+   ASIL: ASIL D
+   Associated Signals: SG_LKA_SteeringCmd (ASIL B), SG_EPS_Feedback # ⚠️ 漏洞 2: 安全信号等级低于系统需求等级 (违反 ISO 26262 规定)
+   SWC Mapping: SWC_LKA_Trajectory
+
+5. ReqID: REQ-ADCU-050
+   Title: Camera Sensor Video Stream Processing
+   Description: The ADCU shall process raw CSI-2 video stream from the front camera to extract lane boundaries and forward them to the vision perception module.
+   ASIL: QM
+   Associated Signals: SG_FrontCamera_Frame_Ready, SG_Vision_Lanes
+   SWC Mapping: SWC_Vision_Perception`;
+
+        // DOM selections
+        const dropZone = document.getElementById('drop_zone');
+        const filePicker = document.getElementById('file_picker');
+        const fileStatus = document.getElementById('file_status');
+        const inputText = document.getElementById('input_text');
+        const btnLoad = document.getElementById('btn_load');
+        const btnAnalyze = document.getElementById('btn_analyze');
+        const statusText = document.getElementById('status_text');
+        const btnDownload = document.getElementById('btn_download');
+        const matrixTbody = document.getElementById('matrix_tbody');
+
+        let analyzedRows = []; // global dataset placeholder
+
+        // 1. One-click preset loader
+        btnLoad.addEventListener('click', () => {
+            inputText.value = PRESET_TEXT;
+            statusText.innerText = "已载入典型 ADCU 样例";
+        });
+
+        // 2. Drag & Drop file upload listeners
+        dropZone.addEventListener('click', () => filePicker.click());
+        dropZone.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            dropZone.classList.add('border-blue-400', 'bg-slate-100');
+        });
+        dropZone.addEventListener('dragleave', () => {
+            dropZone.classList.remove('border-blue-400', 'bg-slate-100');
+        });
+        dropZone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            dropZone.classList.remove('border-blue-400', 'bg-slate-100');
+            const file = e.dataTransfer.files[0];
+            if (file) handleFile(file);
+        });
+        filePicker.addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (file) handleFile(file);
+        });
+
+        // 3. Document Parser Router (PDF, Word, Excel, CSV, TXT)
+        async function handleFile(file) {
+            const name = file.name;
+            const size = (file.size / (1024 * 1024)).toFixed(2);
+            fileStatus.innerText = `已载入: ${name} (${size}MB)`;
+            inputText.value = "正在读取解析文档内容，请稍等...";
+            statusText.innerText = "读取文件中...";
+
+            const extension = name.substring(name.lastIndexOf('.')).toLowerCase();
+
+            try {
+                if (extension === '.txt') {
+                    const text = await readFileAsText(file);
+                    inputText.value = cleanWatermarks(text);
+                } else if (extension === '.pdf') {
+                    const text = await parsePDFClientSide(file);
+                    inputText.value = text;
+                } else if (extension === '.docx') {
+                    const text = await parseDocxClientSide(file);
+                    inputText.value = cleanWatermarks(text);
+                } else if (extension === '.xlsx' || extension === '.xls' || extension === '.csv') {
+                    const text = await parseExcelClientSide(file);
+                    inputText.value = cleanWatermarks(text);
+                } else {
+                    inputText.value = `⚠️ 暂不支持当前文档类型: ${extension}`;
+                }
+                statusText.innerText = "读取完毕，已清洗水印及页眉页脚";
+            } catch (err) {
+                inputText.value = `❌ 文档读取解析失败: ${err.message}`;
+                statusText.innerText = "读取失败";
+            }
+        }
+
+        // --- Client-side File Parsers Implementations ---
+        function readFileAsText(file) {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = (e) => resolve(e.target.result);
+                reader.onerror = (err) => reject(err);
+                reader.readAsText(file);
+            });
+        }
+
+        async function parsePDFClientSide(file) {
+            const arrayBuffer = await file.arrayBuffer();
+            const loadingTask = pdfjsLib.getDocument({ data: arrayBuffer });
+            const pdf = await loadingTask.promise;
+            let fullText = "";
+
+            for (let i = 1; i <= pdf.numPages; i++) {
+                const page = await pdf.getPage(i);
+                const textContent = await page.getTextContent();
+                // Merge text fragments of the page
+                const pageText = textContent.items.map(item => item.str).join(" ");
+                // Strip repeating headers/footers/watermarks per page instantly
+                const cleanedPage = cleanWatermarks(pageText);
+                fullText += cleanedPage + "\n\n";
+            }
+            return fullText;
+        }
+
+        function parseDocxClientSide(file) {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = async (e) => {
+                    try {
+                        const result = await mammoth.extractRawText({ arrayBuffer: e.target.result });
+                        resolve(result.value);
+                    } catch (err) {
+                        reject(err);
+                    }
+                };
+                reader.onerror = (err) => reject(err);
+                reader.readAsArrayBuffer(file);
+            });
+        }
+
+        function parseExcelClientSide(file) {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    try {
+                        const data = new Uint8Array(e.target.result);
+                        const workbook = XLSX.read(data, { type: 'array' });
+                        // Parse first sheet into plaintext CSV layout
+                        const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
+                        const csvText = XLSX.utils.sheet_to_csv(firstSheet);
+                        resolve(csvText);
+                    } catch (err) {
+                        reject(err);
+                    }
+                };
+                reader.onerror = (err) => reject(err);
+                reader.readAsArrayBuffer(file);
+            });
+        }
+
+        // --- Clean watermarks, headers, and repeating page numbers ---
+        function cleanWatermarks(text) {
+            if (!text) return "";
+            return text.split('\n').filter(line => {
+                const l = line.strip ? line.strip() : line.trim();
+                if (/机密|绝密|秘密|内部公开|CONFIDENTIAL|INTERNAL|RESTRICTED/i.test(l)) return false;
+                if (/仅供.*使用|未经授权|Watermark|Draft/i.test(l)) return false;
+                if (/^第\s*\d+\s*页.*共\s*\d+\s*页$/i.test(l)) return false;
+                if (/^-\s*\d+\s*-$/i.test(l)) return false;
+                if (/^\d+\s*\/\s*\d+$/i.test(l)) return false;
+                if (/^(page|pg\.?)\s*\d+$/i.test(l)) return false;
+                return true;
+            }).join('\n');
+        }
+
+        // --- Split Text Block into sentence entries ---
+        function intelligentSentenceSplit(text) {
+            const blocks = text.split(/\n{2,}/);
+            const items = [];
+            blocks.forEach(block => {
+                const b_clean = block.trim();
+                if (!b_clean) return;
+                // split specifically by lists or requirement IDs
+                const subs = b_clean.split(/\n(?=\d+\.|\d+\.\d+|\d+\.\d+\.\d+|[a-zA-Z]+-\d+|\bReqID\b:|\bREQ-\b)/);
+                subs.forEach(s => {
+                    const s_clean = s.trim();
+                    if (s_clean) items.push(s_clean);
+                });
+            });
+            return items;
+        }
+
+        // --- Merge line wrapper errors and chopped words ---
+        function mergeBoundaryErrors(items) {
+            const merged = [];
+            items.forEach(item => {
+                const it = item.trim();
+                if (!it) return;
+                
+                if (merged.length > 0) {
+                    const prev = merged[merged.length - 1];
+                    const startsLower = /^[a-z]/.test(it);
+                    const startsPunc = /^[,，\.。;；\)）\]】_]/.test(it);
+                    const prevBroken = /([A-Za-z0-9_]+-|_|-|and|or|with|of|the|to)$/i.test(prev);
+                    const startsConnector = /^(的|地|得|和|与|或|及|等|进行|所述|时|中)/.test(it);
+                    const codeBroken = /(REQ|SG|SWC|ASIL)$/i.test(prev) && /^(-\w+|\d+)/.test(it);
+
+                    if (startsLower || startsPunc || prevBroken || startsConnector || codeBroken) {
+                        merged[merged.length - 1] = prev + " " + it;
+                        return;
+                    }
+                }
+                
+                // Splitting accidental merges after images/figures
+                const parts = it.split(/(?<=\.|\。)(?=\s*[A-Z]{2,}-\d+|\d+\.\s+[A-Z])/);
+                if (parts.length > 1) {
+                    parts.forEach(p => {
+                        const p_cl = p.trim();
+                        if (p_cl) merged.push(p_cl);
+                    });
+                } else {
+                    merged.push(it);
+                }
+            });
+            return merged;
+        }
+
+        // --- Identify item category: Heading, Requirement, Information ---
+        function classifyItemType(content) {
+            if (/^(\d+\.){1,4}\s+[A-Z\u4e00-\u9fa5]/i.test(content) || /^第[一二三四五六七八九十]+\s*[章章节]/i.test(content)) {
+                return "Heading";
+            }
+            if (content.length < 45 && !/[\.。;；]$/.test(content)) {
+                return "Heading";
+            }
+            if (/\b(shall|must|should|required to)\b/i.test(content) || /应|应当|须|需要|ReqID|REQ-ADCU/i.test(content)) {
+                return "Requirement";
+            }
+            return "Information";
+        }
+
+        // --- Core Split and Classification Engine ---
+        btnAnalyze.addEventListener('click', async () => {
+            const raw = inputText.value.trim();
+            if (!raw) {
+                alert("请输入、加载样例，或上传文档进行分析！");
+                return;
+            }
+
+            const apiKey = document.getElementById('api_key_input').value.trim();
+            statusText.innerText = "分析与拆解中...";
+
+            // If API Key is provided, let's call DeepSeek dynamically via browser client-side
+            if (apiKey && apiKey !== "") {
+                try {
+                    const rawItems = intelligentSentenceSplit(cleanWatermarks(raw));
+                    const items = mergeBoundaryErrors(rawItems);
+                    
+                    // Simple batch API call (supports CORS)
+                    statusText.innerText = "正在调用 DeepSeek API 进行模型智能分类...";
+                    
+                    const response = await fetch("https://api.deepseek.com/chat/completions", {
+                        method: "POST",
+                        headers: {
+                            "Content-Type": "application/json",
+                            "Authorization": `Bearer ${apiKey}`
+                        },
+                        body: JSON.stringify({
+                            model: "deepseek-chat",
+                            messages: [
+                                {
+                                    role: "system",
+                                    content: "你是一个智驾文档分析师。将传入的文本数组分类为: Heading, Requirement, 或 Information。返回标准的 JSON 格式：[[\"文本\", \"分类\"], ...]"
+                                },
+                                {
+                                    role: "user",
+                                    content: JSON.stringify(items)
+                                }
+                            ],
+                            temperature: 0.1
+                        })
+                    });
+                    
+                    if (!response.ok) throw new Error(`API error code: ${response.status}`);
+                    const jsonRes = await response.json();
+                    let rawResult = jsonRes.choices[0].message.content.trim();
+                    if (rawResult.startsWith("```")) {
+                        const lines = rawResult.split("\n");
+                        rawResult = lines.slice(1, -1).join("\n").trim();
+                    }
+                    
+                    const parsedList = JSON.parse(rawResult);
+                    analyzedRows = parsedList.map((item, idx) => {
+                        return {
+                            id: String(idx + 1).padStart(3, '0'),
+                            content: item[0],
+                            type: item[1]
+                        };
+                    });
+                    renderTable();
+                    return;
+                } catch (e) {
+                    console.warn("API call failed, falling back to local rule-engine: ", e);
+                }
+            }
+
+            // Fallback: Offline ultra-precise static state engine
+            setTimeout(() => {
+                const cleanText = cleanWatermarks(raw);
+                const rawItems = intelligentSentenceSplit(cleanText);
+                const items = mergeBoundaryErrors(rawItems);
+
+                analyzedRows = items.map((content, idx) => {
+                    return {
+                        id: String(idx + 1).padStart(3, '0'),
+                        content: content,
+                        type: classifyItemType(content)
+                    };
+                });
+                renderTable();
+            }, 300);
+        });
+
+        // --- Render standard corporate table ---
+        function renderTable() {
+            matrixTbody.innerHTML = "";
+            if (analyzedRows.length === 0) {
+                matrixTbody.innerHTML = `<tr><td colspan="3" class="p-8 text-center text-slate-400">未解析到有效需求条目。</td></tr>`;
+                btnDownload.classList.add('hidden');
+                statusText.innerText = "解析完毕，空数据";
+            } else {
+                analyzedRows.forEach(row => {
+                    const tr = document.createElement('tr');
+                    tr.className = "hover:bg-slate-50 transition-colors";
+                    
+                    let badgeColor = "bg-slate-100 text-slate-700";
+                    if (row.type === 'Heading') badgeColor = "bg-slate-200 text-slate-800 font-bold";
+                    if (row.type === 'Requirement') badgeColor = "bg-blue-50 text-blue-700 font-semibold";
+
+                    tr.innerHTML = `
+                        <td class="p-3 text-center font-mono text-slate-400 border-r border-slate-100">${row.id}</td>
+                        <td class="p-3 whitespace-pre-wrap max-w-[500px] break-words">${row.content}</td>
+                        <td class="p-3 text-center border-l border-slate-100">
+                            <span class="px-2 py-0.5 rounded text-[10px] uppercase ${badgeColor}">${row.type}</span>
+                        </td>
+                    `;
+                    matrixTbody.appendChild(tr);
+                });
+                
+                statusText.innerText = `完成 (成功提取并重组 ${analyzedRows.length} 个条目)`;
+                btnDownload.classList.remove('hidden');
+            }
+        }
+
+        // --- Export directly to standard 3-column CSV/Excel ---
+        btnDownload.addEventListener('click', () => {
+            if (analyzedRows.length === 0) return;
+
+            // Generate RFC-compliant CSV with BOM to guarantee Excel loads Chinese characters with correct fonts & grid lines
+            let csvContent = "\uFEFF序号,内容,Type\n";
+            analyzedRows.forEach(row => {
+                // Escape quotes
+                const escapedContent = row.content.replace(/"/g, '""');
+                csvContent += `"${row.id}","${escapedContent}","${row.type}"\n`;
+            });
+
+            const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement("a");
+            link.setAttribute("href", url);
+            link.setAttribute("download", "ADCU_SpecFlow_Matrix.csv");
+            link.style.visibility = 'hidden';
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        });
+    </script>
+</body>
+</html>
